@@ -4,81 +4,122 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.TimeoutException;
 
-public class Polaczenie extends Thread{
-	private static final int timeout = 10;
-	private ServerSocket ssocket;
+public class Polaczenie extends Thread {
+	private static final int timeout = 60;
 	private Socket socket;
 	private PrintWriter out;
 	private BufferedReader in;
 	private String polecenie;
-	private int port;
+	private User user;
+	private boolean wyjscie = false;
+	private User target;
 	
-	public Polaczenie(int port){
-		this.port=port;
-	}
-	public void run(){
-		
-	try {
-		ssocket = new ServerSocket(port);
-		//System.out.println("Server socket jest");
-		socket = ssocket.accept();
-		info("po³¹czono");
-		//System.out.println("client socket jest");
-		out = new PrintWriter(socket.getOutputStream(),true);
-		//System.out.println("wyjscie poleceñ jest");
-		in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-		//System.out.println("Wejscie polecen jest");
-	} catch (IOException e) {
-		System.err.println("B³¹d portu/po³¹czenia");
-		e.printStackTrace();
+	public Polaczenie(Socket socket) {
+		this.socket=socket;
 	}
 	
-	
-	
-	
-	out.println("identify");
-
-	
-
-	while(true){
-		polecenie=czytajNext();
+	public void run() {
 		
-		switch(polecenie){
-			case "user":
-				if(User.loguj(czytajNext(), czytajNext())){
-					info("Zalogowano " + User.aktualny());
-					out.println("Zalogowano " + User.aktualny());
-				}
-				break;
-			case "exit":
-				return;
+		try {
+			info("po³¹czono");
+			info("client socket jest");
+			out = new PrintWriter(socket.getOutputStream(), true);
+			info("wyjscie poleceñ jest");
+			in = new BufferedReader(new InputStreamReader(
+					socket.getInputStream()));
+			info("Wejscie polecen jest");
+		}
+		catch (IOException e) {
+			System.err.println("B³¹d portu/po³¹czenia");
+			e.printStackTrace();
 		}
 		
+		out.println("identify");
+		
+		while (!wyjscie) {
+			polecenie = czytajNext();
+			
+			switch (polecenie) {
+				case "user":
+					String login = czytajNext();
+					String haslo = czytajNext();
+					if (User.loguj(login, haslo)) {
+						info("Zalogowano " + login);
+						out.println("Zalogowano " + login);
+						user = User.get(login);
+						user.zalogowany = true;
+						user.setIP(socket.getInetAddress().getHostAddress());
+						poZalogowaniu();
+					}
+					break;
+				case "exit":
+					return;
+			}
+			
 		}
-	
+		
 	}
 	
-	private String czytajNext(){
-		try{
+	private String czytajNext() {
+		try {
 			int licznik = 0;
-		while(!in.ready()){
-			Thread.sleep(10);
-			licznik++;
-			if(licznik>timeout*100 && User.aktualny()!=null)throw new TimeoutException();
+			while (!in.ready() && !wyjscie) {
+				Thread.sleep(10);
+				licznik++;
+				if (licznik > timeout * 100) throw new TimeoutException();
 				
+			}
+			return in.readLine();
 		}
-		return in.readLine();
-		}catch(Exception e){
+		catch (Exception e) {
 			System.err.println("B³¹d komunikacji");
 			return "";
 		}
 		
 	}
-	private void info(String s){
-		System.out.println("[port " + port +"] " +s);
+	
+	private void info(String s) {
+		System.out.println("[klient] " + s);
 	}
+	
+	private void poZalogowaniu() {
+		while(!wyjscie){
+			polecenie = "exit";
+			polecenie = czytajNext();
+			if(polecenie.equals("exit")){
+				wyloguj();
+			}else if(polecenie.equals("mojeip")){
+				out.println(user.getIP());
+			}else if(polecenie.equals("target")){
+				target = User.get(czytajNext());
+				if(target != null && target.zalogowany){
+				out.println(target.getIP());
+				}else{
+					out.println("brak");
+					info("user niezalogowany/brak usera");
+				}
+			}else if(polecenie.equals("")){
+				
+			}
+			
+			
+			
+		}
+	}
+		private void wyloguj(){
+			info("Wylogowano " + user.nazwa());
+			user.zalogowany=false;
+			wyjscie = true;
+			try {
+				socket.close();
+			}
+			catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	
 }
